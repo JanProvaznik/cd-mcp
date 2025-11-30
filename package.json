@@ -1,0 +1,36 @@
+{
+  "name": "cd-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Czech Railways (České dráhy) - search trains, connections and prices",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "cd-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "npx tsx src/index.ts"
+  },
+  "keywords": [
+    "mcp",
+    "czech-railways",
+    "ceske-drahy",
+    "train",
+    "travel",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.23.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
