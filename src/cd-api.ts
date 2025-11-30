@@ -9,8 +9,6 @@ import type {
   Location,
   Connection,
   ConnectionSearchResult,
-  PassengerType,
-  PriceOffer,
   ConnectionLeg,
 } from './types.js';
 
@@ -18,6 +16,7 @@ const API_BASE_URL = 'https://ipws.cdis.cz/IP.svc';
 const APP_ID = '{A6AB5B3E-8A7E-4E84-9DC8-801561CE886F}';
 const USER_DESC = '294|34|MCP-Client|^|mcp-cd-server|en|US|440|1080|2154|1.0.0';
 const DEFAULT_CURRENCY = 'CZK';
+const IDOS_BASE_URL = 'https://idos.cz/vlakyautobusymhdvse/spojeni';
 
 interface StationInfo {
   id: number;
@@ -171,35 +170,15 @@ export class CdApiClient {
   }
 
   /**
-   * Get location details by type and key
-   * @param _type - Location type (ignored)
-   * @param key - Location key/identifier (station name)
-   */
-  async getLocation(_type: string, key: string): Promise<Location | null> {
-    try {
-      const station = await this.searchStation(key);
-      return {
-        key: String(station.id),
-        name: station.name,
-        type: 'station',
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * Search for train connections
    * @param from - Departure station/city name
    * @param to - Arrival station/city name
    * @param departure - Departure date/time (ISO 8601 format)
-   * @param passengers - Number of passengers (default: 1)
    */
   async searchConnections(
     from: string,
     to: string,
-    departure: string,
-    passengers: number = 1
+    departure: string
   ): Promise<ConnectionSearchResult> {
     // First, resolve station names to IDs
     const [fromStation, toStation] = await Promise.all([
@@ -213,7 +192,7 @@ export class CdApiClient {
     // Convert departure to timestamp
     const depMs = new Date(departure).getTime();
 
-    // Search for journeys
+    // Search for journeys (1 adult passenger for price)
     const body = {
       iLang: 1,
       sSessionID: sessionID,
@@ -227,17 +206,17 @@ export class CdApiClient {
       iMaxObjectsCount: 0,
       iMaxCount: 8,
       oPriceRequestClass: { iClass: 2, bBusiness: false },
-      aoPassengers: Array(passengers).fill({
+      aoPassengers: [{
         oPassenger: { iPassengerId: 5 },
         iCount: 1,
         iAge: -1,
-      }),
+      }],
     };
 
     const result = await this.postRequest<ConnectionInfo>('SearchConnectionInfo1', body);
 
     if (!result?.oConnInfo?.aoConnections) {
-      return { connections: [] };
+      return { connections: [], fromStation: fromStation.name, toStation: toStation.name };
     }
 
     // Get prices for all connections
@@ -251,11 +230,11 @@ export class CdApiClient {
         iHandle: result.iHandle,
         aiConnID: connIDs,
         oPriceRequest: {
-          aoPassengers: Array(passengers).fill({
+          aoPassengers: [{
             oPassenger: { iPassengerId: 5 },
             iCount: 1,
             iAge: -1,
-          }),
+          }],
           iConnHandleThere: 0,
           iConnIDThere: 0,
           oClass: { iClass: 2, bBusiness: false },
@@ -304,53 +283,10 @@ export class CdApiClient {
     });
 
     return {
-      handle: String(result.iHandle),
       connections,
+      fromStation: fromStation.name,
+      toStation: toStation.name,
     };
-  }
-
-  /**
-   * Get more connections using a pagination handle
-   * Note: This is a simplified implementation - the mobile API doesn't support
-   * pagination the same way, so this throws an error indicating the feature is not supported
-   */
-  async getMoreConnections(_handle: string, _direction: 'next' | 'previous' = 'next'): Promise<ConnectionSearchResult> {
-    throw new Error('Pagination is not supported by the mobile API. Please perform a new search with a different departure time.');
-  }
-
-  /**
-   * Get detailed information about a specific connection
-   * Note: The mobile API doesn't have a separate endpoint for connection details,
-   * all information is included in the search results
-   */
-  async getConnectionDetails(_handle: string, _connectionId: string): Promise<Connection> {
-    throw new Error('Connection details endpoint is not supported by the mobile API. Use searchConnections to get all connection information.');
-  }
-
-  /**
-   * Get available passenger types and discounts
-   */
-  async getPassengerTypes(): Promise<PassengerType[]> {
-    // The mobile API doesn't have a dedicated endpoint for passenger types,
-    // so we return common types
-    return [
-      { key: 'ADULT', name: 'Adult', description: 'Full fare adult passenger' },
-      { key: 'CHILD', name: 'Child', description: 'Child under 15 years', discountPercent: 50 },
-      { key: 'STUDENT', name: 'Student', description: 'Student with valid ISIC card', discountPercent: 25 },
-      { key: 'SENIOR', name: 'Senior', description: 'Senior 65+ years', discountPercent: 50 },
-    ];
-  }
-
-  /**
-   * Get a price offer for a connection
-   * Note: Prices are already included in the connection search results from the mobile API.
-   * This method is not fully supported.
-   */
-  async getPriceOffer(
-    connectionId: string,
-    _passengers: { type: string; count: number }[]
-  ): Promise<PriceOffer> {
-    throw new Error('Separate price offers are not supported by the mobile API. Prices are included in connection search results.');
   }
 }
 
@@ -385,14 +321,35 @@ export function formatConnection(conn: Connection): string {
  * Format a location for display
  */
 export function formatLocation(loc: Location): string {
-  let result = `📍 ${loc.name}`;
-  if (loc.type) {
-    result += ` (${loc.type})`;
-  }
-  if (loc.countryCode) {
-    result += ` [${loc.countryCode}]`;
-  }
-  return result;
+  return `📍 ${loc.name}`;
+}
+
+/**
+ * Generate a booking URL for IDOS timetable service
+ * IDOS supports deep linking with search parameters pre-filled
+ * @param fromStation - Departure station name
+ * @param toStation - Arrival station name  
+ * @param departure - Departure date/time in ISO format
+ */
+export function generateBookingUrl(fromStation: string, toStation: string, departure: string): string {
+  const depDate = new Date(departure);
+  const day = String(depDate.getDate()).padStart(2, '0');
+  const month = String(depDate.getMonth() + 1).padStart(2, '0');
+  const year = depDate.getFullYear();
+  const hours = String(depDate.getHours()).padStart(2, '0');
+  const minutes = String(depDate.getMinutes()).padStart(2, '0');
+  
+  const dateFormatted = `${day}.${month}.${year}`;
+  const timeFormatted = `${hours}:${minutes}`;
+  
+  const params = new URLSearchParams({
+    f: fromStation,
+    t: toStation,
+    date: dateFormatted,
+    time: timeFormatted,
+  });
+  
+  return `${IDOS_BASE_URL}?${params.toString()}`;
 }
 
 // Export singleton client instance
