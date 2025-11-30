@@ -16,7 +16,7 @@ const API_BASE_URL = 'https://ipws.cdis.cz/IP.svc';
 const APP_ID = '{A6AB5B3E-8A7E-4E84-9DC8-801561CE886F}';
 const USER_DESC = '294|34|MCP-Client|^|mcp-cd-server|en|US|440|1080|2154|1.0.0';
 const DEFAULT_CURRENCY = 'CZK';
-const BOOKING_BASE_URL = 'https://www.cd.cz/spojeni-a-jizdenka/';
+const IDOS_BASE_URL = 'https://idos.cz/vlakyautobusymhdvse/spojeni';
 
 interface StationInfo {
   id: number;
@@ -325,22 +325,31 @@ export function formatLocation(loc: Location): string {
 }
 
 /**
- * Generate a booking URL for the ČD website
+ * Generate a booking URL for IDOS timetable service
+ * IDOS supports deep linking with search parameters pre-filled
  * @param fromStation - Departure station name
  * @param toStation - Arrival station name  
  * @param departure - Departure date/time in ISO format
  */
 export function generateBookingUrl(fromStation: string, toStation: string, departure: string): string {
   const depDate = new Date(departure);
-  const dateStr = depDate.toISOString().slice(0, 16); // Format: YYYY-MM-DDTHH:MM
+  const day = String(depDate.getDate()).padStart(2, '0');
+  const month = String(depDate.getMonth() + 1).padStart(2, '0');
+  const year = depDate.getFullYear();
+  const hours = String(depDate.getHours()).padStart(2, '0');
+  const minutes = String(depDate.getMinutes()).padStart(2, '0');
+  
+  const dateFormatted = `${day}.${month}.${year}`;
+  const timeFormatted = `${hours}:${minutes}`;
   
   const params = new URLSearchParams({
-    fromCity: fromStation,
-    toCity: toStation,
-    dateTime: dateStr,
+    f: fromStation,
+    t: toStation,
+    date: dateFormatted,
+    time: timeFormatted,
   });
   
-  return `${BOOKING_BASE_URL}?${params.toString()}`;
+  return `${IDOS_BASE_URL}?${params.toString()}`;
 }
 
 // Export singleton client instance

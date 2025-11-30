@@ -78,7 +78,7 @@ server.registerTool(
   'search_connections',
   {
     title: 'Search Connections',
-    description: 'Search for train connections between two stations. Returns available trains with departure times, duration, prices, and a link to book tickets on cd.cz.',
+    description: 'Search for train connections between two stations. Returns available trains with departure times, duration, prices (in CZK), and a link to book tickets.',
     inputSchema: {
       from: z.string().describe('Departure station or city name (e.g., "Praha", "Praha hl.n.")'),
       to: z.string().describe('Arrival station or city name (e.g., "Brno", "Brno hl.n.")'),
@@ -101,7 +101,7 @@ server.registerTool(
       const bookingUrl = generateBookingUrl(result.fromStation, result.toStation, departure);
       const formatted = result.connections.map(formatConnection).join('\n\n---\n\n');
       let summary = `Found ${result.connections.length} connection(s) from "${result.fromStation}" to "${result.toStation}":\n\n${formatted}`;
-      summary += `\n\n🎫 Book tickets at: ${bookingUrl}`;
+      summary += `\n\n🎫 Book tickets: ${bookingUrl}`;
       
       return {
         content: [{
