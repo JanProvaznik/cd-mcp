@@ -136,7 +136,7 @@ server.registerTool(
   'get_connection_details',
   {
     title: 'Get Connection Details',
-    description: 'Get detailed information about a specific train connection, including all stops, platforms, and carrier information.',
+    description: 'Get detailed information about a specific train connection. Note: This endpoint is not available with the mobile API - all connection details are included in search results.',
     inputSchema: {
       handle: z.string().describe('Connection search handle from a previous search'),
       connectionId: z.string().describe('Connection identifier from the search results'),
@@ -228,7 +228,7 @@ server.registerTool(
   'get_price_offer',
   {
     title: 'Get Price Offer',
-    description: 'Get a price offer for a specific connection with given passenger types. Note: This only retrieves pricing information, it does not book tickets.',
+    description: 'Get a price offer for a specific connection. Note: Prices are already included in connection search results, so this separate endpoint is not available with the mobile API.',
     inputSchema: {
       connectionId: z.string().describe('Connection identifier from search results'),
       passengers: z.array(z.object({
