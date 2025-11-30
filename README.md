@@ -2,15 +2,12 @@
 
 MCP (Model Context Protocol) server for Czech Railways (České dráhy) API.
 
-This server provides AI assistants with tools to search for train connections, stations, and prices on the Czech railway network.
+This server provides AI assistants with tools to search for train connections, stations, and prices on the Czech railway network, with direct links to book tickets.
 
 ## Features
 
 - **Search Locations**: Find train stations and cities in the Czech Railways network
-- **Search Connections**: Search for train connections between two stations
-- **Get Connection Details**: Get detailed information about a specific connection
-- **Get Passenger Types**: List available passenger types and discount categories
-- **Get Price Offers**: Get pricing information for connections
+- **Search Connections**: Search for train connections between two stations with prices and booking links
 
 ## Installation
 
@@ -56,59 +53,53 @@ Search for train stations and cities by name.
 
 **Parameters:**
 - `query` (string, required): Search query (e.g., "Praha", "Brno")
-- `type` (string, optional): Location type filter (e.g., "station", "city")
+
+**Example:**
+```
+> Search for stations: "Ostrava"
+📍 Ostrava
+📍 Ostrava hl.n.
+📍 Ostrava střed
+...
+```
 
 ### search_connections
 
-Search for train connections between two stations.
+Search for train connections between two stations. Returns available trains with departure times, duration, prices, and a link to book tickets.
 
 **Parameters:**
-- `from` (string, required): Departure station
-- `to` (string, required): Arrival station
-- `departure` (string, required): Departure date/time in ISO 8601 format
-- `passengers` (number, optional): Number of passengers (1-9, default: 1)
+- `from` (string, required): Departure station or city name (e.g., "Praha", "Praha hl.n.")
+- `to` (string, required): Arrival station or city name (e.g., "Brno", "Brno hl.n.")
+- `departure` (string, required): Departure date/time in ISO 8601 format (e.g., "2025-12-15T08:00:00")
 
-### get_connection_details
+**Example:**
+```
+> Search connections from Praha to Brno on December 15, 2025 at 10:00
 
-Get detailed information about a specific connection.
+Found 8 connection(s) from "Praha" to "Brno":
 
-**Parameters:**
-- `handle` (string, required): Connection search handle from previous search
-- `connectionId` (string, required): Connection identifier
+🚆 Connection: 2025-12-15T10:36:00.000Z → 2025-12-15T13:13:00.000Z
+   Duration: 2h 37m
+   Transfers: 0
+   Price: 269 CZK
+   Legs:
+     1. Praha-Holešovice → Brno hl.n.
+        Dep: 2025-12-15T10:36:00.000Z | Arr: 2025-12-15T13:13:00.000Z
+        Train: rj 251 Vindobona Ex3
+...
 
-### get_passenger_types
-
-Get available passenger types and discount categories.
-
-**Parameters:** None
-
-### get_price_offer
-
-Get a price offer for a connection (read-only, does not book tickets).
-
-**Parameters:**
-- `connectionId` (string, required): Connection identifier
-- `passengers` (array, required): Array of passenger types and counts
+🎫 Book tickets at: https://www.cd.cz/spojeni-a-jizdenka/?fromCity=Praha&toCity=Brno&dateTime=2025-12-15T10:00
+```
 
 ## Design Decisions
 
-As a Principal Architect, the following design decisions were made:
+1. **Simplified interface**: Only two tools are needed for the main use case - finding connections and prices, then booking via the official website.
 
-1. **Read-only operations only**: The server only exposes read operations (search, get details, pricing). Booking, payment, and refund operations are intentionally excluded for security reasons - these should require explicit user action through official channels.
+2. **Booking via official website**: Instead of complex booking flows, users get a direct link to book tickets on cd.cz. This ensures they get the official booking experience with all options.
 
-2. **Stdio transport**: Uses stdio transport for simple integration with MCP clients like Claude Desktop. HTTP transport can be added if needed.
+3. **Prices included in search**: Prices for adult passengers are automatically fetched and displayed with each connection.
 
-3. **Error handling**: All tools include proper error handling and return user-friendly error messages.
-
-4. **Type safety**: Full TypeScript implementation with proper type definitions for API responses.
-
-5. **Formatting**: Results are formatted for readability with emojis and structured text output.
-
-## API Reference
-
-This server interfaces with the Czech Railways Ticket API:
-- Documentation: https://ticket-api.cd.cz/swaggerUI/cdapi-1.0.0.yml
-- Base URL: https://ticket-api.cd.cz/api/v1
+4. **Read-only operations**: The server only exposes read operations (search). Booking is handled through the official ČD website for security and user experience.
 
 ## License
 

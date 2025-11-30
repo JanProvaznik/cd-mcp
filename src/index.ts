@@ -3,20 +3,17 @@
  * Czech Railways (České dráhy) MCP Server
  * 
  * An MCP server that provides tools for searching Czech railway
- * connections, stations, and prices.
+ * connections, stations, and prices with booking links.
  * 
  * Tools:
  * - search_locations: Find train stations and cities
- * - search_connections: Search for train connections
- * - get_connection_details: Get detailed info about a connection
- * - get_passenger_types: List available passenger types and discounts
- * - get_price_offer: Get price offer for a connection
+ * - search_connections: Search for train connections with prices and booking links
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod/v4';
-import { cdClient, formatConnection, formatLocation } from './cd-api.js';
+import { cdClient, formatConnection, formatLocation, generateBookingUrl } from './cd-api.js';
 
 // Create the MCP server
 const server = new McpServer({
@@ -81,17 +78,16 @@ server.registerTool(
   'search_connections',
   {
     title: 'Search Connections',
-    description: 'Search for train connections between two stations. Returns available trains with departure times, duration, and transfers.',
+    description: 'Search for train connections between two stations. Returns available trains with departure times, duration, prices, and a link to book tickets on cd.cz.',
     inputSchema: {
-      from: z.string().describe('Departure station key or name (e.g., "Praha hl.n.")'),
-      to: z.string().describe('Arrival station key or name (e.g., "Brno hl.n.")'),
-      departure: z.string().describe('Departure date and time in ISO 8601 format (e.g., "2024-03-15T08:00:00")'),
-      passengers: z.number().min(1).max(9).default(1).describe('Number of passengers (1-9, default: 1)'),
+      from: z.string().describe('Departure station or city name (e.g., "Praha", "Praha hl.n.")'),
+      to: z.string().describe('Arrival station or city name (e.g., "Brno", "Brno hl.n.")'),
+      departure: z.string().describe('Departure date and time in ISO 8601 format (e.g., "2025-12-15T08:00:00")'),
     },
   },
-  async ({ from, to, departure, passengers }) => {
+  async ({ from, to, departure }) => {
     try {
-      const result = await cdClient.searchConnections(from, to, departure, passengers);
+      const result = await cdClient.searchConnections(from, to, departure);
       
       if (!result.connections || result.connections.length === 0) {
         return {
@@ -102,12 +98,10 @@ server.registerTool(
         };
       }
 
+      const bookingUrl = generateBookingUrl(result.fromStation, result.toStation, departure);
       const formatted = result.connections.map(formatConnection).join('\n\n---\n\n');
-      let summary = `Found ${result.connections.length} connection(s) from "${from}" to "${to}":\n\n${formatted}`;
-      
-      if (result.handle) {
-        summary += `\n\n📑 Pagination handle: ${result.handle} (use with get_more_connections for more results)`;
-      }
+      let summary = `Found ${result.connections.length} connection(s) from "${result.fromStation}" to "${result.toStation}":\n\n${formatted}`;
+      summary += `\n\n🎫 Book tickets at: ${bookingUrl}`;
       
       return {
         content: [{
@@ -121,155 +115,6 @@ server.registerTool(
         content: [{
           type: 'text' as const,
           text: `Error searching connections: ${message}`,
-        }],
-        isError: true,
-      };
-    }
-  }
-);
-
-/**
- * Tool: get_connection_details
- * Get detailed information about a specific connection
- */
-server.registerTool(
-  'get_connection_details',
-  {
-    title: 'Get Connection Details',
-    description: 'Get detailed information about a specific train connection. Note: This endpoint is not available with the mobile API - all connection details are included in search results.',
-    inputSchema: {
-      handle: z.string().describe('Connection search handle from a previous search'),
-      connectionId: z.string().describe('Connection identifier from the search results'),
-    },
-  },
-  async ({ handle, connectionId }) => {
-    try {
-      const connection = await cdClient.getConnectionDetails(handle, connectionId);
-      const formatted = formatConnection(connection);
-      
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `Connection Details:\n\n${formatted}`,
-        }],
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `Error getting connection details: ${message}`,
-        }],
-        isError: true,
-      };
-    }
-  }
-);
-
-/**
- * Tool: get_passenger_types
- * Get available passenger types and discounts
- */
-server.registerTool(
-  'get_passenger_types',
-  {
-    title: 'Get Passenger Types',
-    description: 'Get a list of available passenger types and discount categories (e.g., adult, child, senior, student discounts).',
-    inputSchema: {},
-  },
-  async () => {
-    try {
-      const types = await cdClient.getPassengerTypes();
-      
-      if (types.length === 0) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: 'No passenger types available.',
-          }],
-        };
-      }
-
-      const formatted = types.map(t => {
-        let line = `👤 ${t.name} (${t.key})`;
-        if (t.description) {
-          line += `\n   ${t.description}`;
-        }
-        if (t.discountPercent !== undefined) {
-          line += `\n   Discount: ${t.discountPercent}%`;
-        }
-        return line;
-      }).join('\n\n');
-      
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `Available passenger types:\n\n${formatted}`,
-        }],
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `Error getting passenger types: ${message}`,
-        }],
-        isError: true,
-      };
-    }
-  }
-);
-
-/**
- * Tool: get_price_offer
- * Get a price offer for a connection
- */
-server.registerTool(
-  'get_price_offer',
-  {
-    title: 'Get Price Offer',
-    description: 'Get a price offer for a specific connection. Note: Prices are already included in connection search results, so this separate endpoint is not available with the mobile API.',
-    inputSchema: {
-      connectionId: z.string().describe('Connection identifier from search results'),
-      passengers: z.array(z.object({
-        type: z.string().describe('Passenger type key (e.g., "ADULT", "CHILD", "SENIOR")'),
-        count: z.number().min(1).max(9).describe('Number of passengers of this type'),
-      })).describe('Array of passenger types and counts'),
-    },
-  },
-  async ({ connectionId, passengers }) => {
-    try {
-      const offer = await cdClient.getPriceOffer(connectionId, passengers);
-      
-      let summary = `💰 Price Offer\n`;
-      summary += `   Booking ID: ${offer.bookingId}\n`;
-      summary += `   Total Price: ${offer.totalPrice.amount} ${offer.totalPrice.currency}\n`;
-      
-      if (offer.validUntil) {
-        summary += `   Valid Until: ${offer.validUntil}\n`;
-      }
-      
-      if (offer.tickets && offer.tickets.length > 0) {
-        summary += `\n   Ticket breakdown:\n`;
-        offer.tickets.forEach((ticket, i) => {
-          summary += `     ${i + 1}. ${ticket.passengerType}: ${ticket.price.amount} ${ticket.price.currency}\n`;
-        });
-      }
-      
-      summary += `\n⚠️ Note: This is only a price quote. To purchase tickets, please visit cd.cz or use the official ČD app.`;
-      
-      return {
-        content: [{
-          type: 'text' as const,
-          text: summary,
-        }],
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `Error getting price offer: ${message}`,
         }],
         isError: true,
       };
